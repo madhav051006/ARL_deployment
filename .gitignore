@@ -1,0 +1,10 @@
+# build outputs
+acids_infer
+acids_txt_to_bin
+libacids_mel_preprocess.so
+*.o
+
+# Python
+__pycache__/
+*.pyc
+_tiny_nn_gen/

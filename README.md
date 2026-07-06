@@ -1,13 +1,23 @@
 # ACIDS DeepSense C Inference Package (n_fft=25)
 
-Self-contained C inference package for the W8-quantized DeepSense audio model trained with **`n_fft=25`** mel (no zero-padding before FFT).
+Self-contained C inference package for the W8-quantized DeepSense audio model trained with **`n_fft=25`** mel.
 
-This folder mirrors the older `deepsense_tiny_c_static_int8_conv_weight_only_linear_deploy` package, but uses the n_fft=25 finetune checkpoint and matching preprocessing.
+This git repository **is** the deploy package: clone it and `Makefile`, `main.c`, `samples/`, etc. live at the **repo root** (no nested project folder).
+
+Remote: `git@github.com:madhav051006/ARL_deployment.git`
 
 ## Build And Run
 
 ```bash
-cd deepsense_tiny_c_nfft25_static_int8_conv_weight_only_linear_deploy
+git clone git@github.com:madhav051006/ARL_deployment.git
+cd ARL_deployment
+make
+./acids_infer
+```
+
+If you already have this tree (e.g. under `demo_codebase/`), from the repo root:
+
+```bash
 make
 ./acids_infer
 ```
@@ -59,6 +69,16 @@ audio: (3, 7, 25) @ 1600 Hz per segment
 | Layout | CHW when flattened |
 | Total values | 525 |
 | File size | 2,100 bytes (525 × 4) |
+
+## Clip Duration (important)
+
+This model sees a **short ACIDS event window (~110 ms)**.
+
+| Stage | Shape | Sample rate | Duration |
+|-------|-------|-------------|----------|
+| ACIDS .pt (native) | (3, 7, 256) | 16 kHz | ~112 ms |
+| After decimation | (3, 7, 25) | 1600 Hz | ~109 ms |
+| After mel | (1, 7, 80) | — | 7 time bins |
 
 Flatten order (channel-major):
 
