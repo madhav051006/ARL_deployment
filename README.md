@@ -4,18 +4,18 @@ Self-contained C inference package for the W8-quantized DeepSense audio model tr
 
 This git repository **is** the deploy package: clone it and `Makefile`, `main.c`, `samples/`, etc. live at the **repo root** (no nested project folder).
 
-Remote: `git@github.com:madhav051006/ARL_deploy.git`
+Remote: `git@github.com:madhav051006/ARL_deployment.git`
 
 ## Build And Run
 
 ```bash
-git clone git@github.com:madhav051006/ARL_deploy.git
-cd ARL_deploy
+git clone git@github.com:madhav051006/ARL_deployment.git
+cd ARL_deployment
 make
 ./acids_infer
 ```
 
-If you already have this tree (e.g. `demo_codebase/ARL_deploy/`), from the repo root:
+If you already have this tree locally (e.g. `demo_codebase/ARL_deploy/`), from that folder:
 
 ```bash
 make
