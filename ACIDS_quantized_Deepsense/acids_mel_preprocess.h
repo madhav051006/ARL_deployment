@@ -8,9 +8,8 @@
 #define ACIDS_SEG_SAMPLES     228
 #define ACIDS_USED_SAMPLES    (ACIDS_NUM_SEGMENTS * ACIDS_SEG_SAMPLES)
 #define ACIDS_RAW_AUDIO_CHANNELS 3
-#define ACIDS_RAW_SEG_SAMPLES   256
-#define ACIDS_DECIMATE_FACTOR   10
-#define ACIDS_DECIMATED_SEG_SAMPLES 25
+#define ACIDS_RAW_SAMPLE_RATE_HZ 1600
+#define ACIDS_RAW_SEG_SAMPLES   25
 #define ACIDS_MEL_BINS        80
 #define ACIDS_N_FFT           25
 #define ACIDS_N_FFT_BINS      (ACIDS_N_FFT / 2 + 1)
@@ -34,10 +33,8 @@ int acids_mel_preprocess_hwc(const float *input_1600, float *out_hwc);
 /**
  * Dataset-shaped ACIDS audio preprocessing.
  *
- * Input: [C=3][segments=7][T=256] flattened in CHW order @ 16 kHz per segment.
- * Processing: select channel 0, trim each segment to 250 samples, apply the
- * same 101-tap FIR + stride-10 decimator as audio_downsample.py, then log-mel
- * with n_fft=25 on the 25 decimated samples per segment.
+ * Input: [C=3][segments=7][T=25] flattened in CHW order @ 1600 Hz per segment.
+ * Processing: select channel 0, apply log-mel per segment (n_fft=25, no padding).
  *
  * Output CHW: [C=1][H=7][W=80] flattened.
  */

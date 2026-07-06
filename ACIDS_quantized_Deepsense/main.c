@@ -2,8 +2,7 @@
  * ACIDS DeepSense C inference runner.
  *
  * Input file format:
- *   raw float32 binary, flattened [C=3][segments=7][T=256].
- *   These are the 16 kHz framed ACIDS audio samples used by the Python loader.
+ *   raw float32 binary, flattened [C=3][segments=7][T=25] @ 1600 Hz per segment.
  *   Channel 0 is used for inference (channels 1-2 are ignored).
  *
  * Run with no arguments to execute all packaged samples.

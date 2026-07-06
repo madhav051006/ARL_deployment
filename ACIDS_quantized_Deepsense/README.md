@@ -49,21 +49,21 @@ Convert a human-readable `.txt` sample to `.bin` (no Python needed):
 Each sample is raw float32 binary with this flattened shape:
 
 ```text
-[C=3][segments=7][T=256]
+[C=3][segments=7][T=25]
 ```
 
-This matches the ACIDS audio tensor before preprocessing:
+This is **decimated audio at 1600 Hz** (25 samples per segment):
 
 ```text
-audio: (3, 7, 256) @ 16 kHz per segment
+audio: (3, 7, 25) @ 1600 Hz per segment
 ```
 
 | Field | Value |
 |-------|-------|
 | Dtype | `float32` |
 | Layout | CHW when flattened |
-| Total values | 5,376 |
-| File size | 21,504 bytes (5,376 × 4) |
+| Total values | 525 |
+| File size | 2,100 bytes (525 × 4) |
 
 ## Clip Duration
 
@@ -71,19 +71,18 @@ This model sees a **short ACIDS event window (~110 ms)**.
 
 | Stage | Shape | Sample rate | Duration |
 |-------|-------|-------------|----------|
-| Raw input | (3, 7, 256) | 16 kHz | ~112 ms |
-| After decimation (in C) | (3, 7, 25) | 1600 Hz | ~109 ms |
+| Raw input | (3, 7, 25) | 1600 Hz | ~109 ms |
 | After mel | (1, 7, 80) | — | 7 time bins |
 
 Flatten order (channel-major):
 
 ```text
-index(c, seg, t) = c * (7 * 256) + seg * 256 + t
+index(c, seg, t) = c * (7 * 25) + seg * 25 + t
 ```
 
 The C runner uses only **audio channel 0**. Channels 1 and 2 are ignored.
 
-Send **16 kHz** `(3, 7, 256)` binaries. The C code performs 16 kHz → 1600 Hz decimation (101-tap FIR + stride 10) before log-mel with `n_fft=25`.
+Your upstream pipeline must deliver audio already decimated to 1600 Hz with 25 samples per segment. The C code does **not** perform downsampling.
 
 ### Human-readable `.txt` format
 
@@ -94,8 +93,8 @@ The same data is available in `samples_txt/` (one float per line, with a short h
 | 1 | Sample name | `Gv3c1090_96` |
 | 2 | Label id (use `-1` if unknown) | `0` |
 | 3 | Layout tag (fixed) | `RAW_AUDIO_CHW` |
-| 4 | Shape (fixed for this model) | `3,7,256` |
-| 5–5380 | Flattened CHW values | one float per line |
+| 4 | Shape (fixed for this model) | `3,7,25` |
+| 5–529 | Flattened CHW values | one float per line |
 
 Convert `.txt` → `.bin` with `./acids_txt_to_bin` (built by `make`).
 
@@ -106,19 +105,19 @@ import numpy as np
 
 NUM_CHANNELS = 3
 NUM_SEGMENTS = 7
-SAMPLES_PER_SEGMENT = 256
+SAMPLES_PER_SEGMENT = 25
 
 
 def write_sample_bin(path: str, audio_chw: np.ndarray) -> None:
     if audio_chw.shape != (NUM_CHANNELS, NUM_SEGMENTS, SAMPLES_PER_SEGMENT):
-        raise ValueError(f"expected (3, 7, 256), got {audio_chw.shape}")
+        raise ValueError(f"expected (3, 7, 25), got {audio_chw.shape}")
     audio_chw.astype(np.float32).tofile(path)
 
 
 def write_sample_txt(path: str, sample_name: str, label_id: int, audio_chw: np.ndarray) -> None:
     flat = audio_chw.astype(np.float32).reshape(-1)
     with open(path, "w", encoding="utf-8") as f:
-        f.write(f"{sample_name}\n{int(label_id)}\nRAW_AUDIO_CHW\n3,7,256\n")
+        f.write(f"{sample_name}\n{int(label_id)}\nRAW_AUDIO_CHW\n3,7,25\n")
         for value in flat:
             f.write(f"{float(value):.9g}\n")
 ```
@@ -126,11 +125,10 @@ def write_sample_txt(path: str, sample_name: str, label_id: int, audio_chw: np.n
 ## Data Flow
 
 ```text
-sample .bin  [3][7][256] @ 16 kHz
+sample .bin  [3][7][25] @ 1600 Hz
   -> main.c
   -> acids_audio_preprocess_ch0_segments_chw()
        select channel 0
-       decimate 256 -> 25 per segment (101-tap FIR, stride 10)
        log-mel per segment (n_fft=25)
   -> model_forward()
   -> argmax logits
@@ -142,9 +140,8 @@ sample .bin  [3][7][256] @ 16 kHz
 |------|------|
 | `main.c` | Inference runner |
 | `acids_txt_to_bin.c` | `.txt` → `.bin` converter |
-| `acids_mel_preprocess.c/.h` | Decimation + log-mel preprocessing |
-| `acids_fir_taps.h` | FIR coefficients for 16 kHz → 1600 Hz decimation |
-| `acids_mel_tables.h`, `acids_rfft_tables.h` | Mel filterbank and RFFT tables (`n_fft=25`) |
+| `acids_mel_preprocess.c/.h` | Log-mel preprocessing (`n_fft=25`) |
+| `acids_mel_tables.h`, `acids_rfft_tables.h` | Mel filterbank and RFFT tables |
 | `model.c/.h`, `weights.h` | Generated W8 model graph and weights |
 | `nn_ops_*.h` | Runtime operators used by the generated model |
 | `acids_samples.h` | Packaged sample manifest |
@@ -171,7 +168,7 @@ int acids_audio_preprocess_ch0_segments_chw(const float *input_chw, float *out_c
 Input:
 
 ```text
-input_chw: [3][7][256] float32, flattened CHW @ 16 kHz per segment
+input_chw: [3][7][25] float32, flattened CHW @ 1600 Hz per segment
 ```
 
 Output:
@@ -187,15 +184,14 @@ n_fft: 25
 mel_bins: 80
 fmin: 20.0 Hz
 fmax: 800.0 Hz
-sample_rate: 1600 Hz (after decimation)
+sample_rate: 1600 Hz
 log epsilon: 1e-6
 ```
 
 Pipeline per segment:
 
 ```text
-256 samples @ 16 kHz
-  -> FIR decimation (stride 10) -> 25 samples @ 1600 Hz
+25 samples @ 1600 Hz
   -> RFFT, 13 bins
   -> power spectrum
   -> mel filterbank [80][13]
@@ -267,9 +263,8 @@ ACIDS_quantized_Deepsense/
   acids_mel_preprocess.c/.h
   acids_mel_tables.h
   acids_rfft_tables.h
-  acids_fir_taps.h
   acids_class_names.h
   acids_samples.h
-  samples/*.bin          # 15 binary inputs (21,504 bytes each)
+  samples/*.bin          # 15 binary inputs (2,100 bytes each)
   samples_txt/*.txt      # same samples, human-readable
 ```

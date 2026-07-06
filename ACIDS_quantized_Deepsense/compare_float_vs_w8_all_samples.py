@@ -18,7 +18,6 @@ REPO = PKG.parent.parent if (PKG.parent.parent / "src2").is_dir() else PKG.paren
 SRC2 = REPO / "src2"
 sys.path.insert(0, str(SRC2))
 
-from data_augmenter.audio_downsample import AudioDownsampler
 from data_augmenter.mel_preprocess import MelPreprocessor  # noqa: E402
 from models.DeepSenseDepthwise import DeepSenseDepthwiseBackbone  # noqa: E402
 
@@ -28,7 +27,7 @@ CKPT = SRC2 / (
 )
 
 NUM_SEGMENTS = 7
-SAMPLES_PER_SEGMENT = 256
+SAMPLES_PER_SEGMENT = 25
 MEL_BINS = 80
 RAW_SHAPE = (3, NUM_SEGMENTS, SAMPLES_PER_SEGMENT)
 MEL_SIZE = NUM_SEGMENTS * MEL_BINS
@@ -128,30 +127,17 @@ def make_mel_preprocessor() -> MelPreprocessor:
     )
 
 
-def make_downsampler() -> AudioDownsampler:
-    return AudioDownsampler(16000, 1600, target_modalities=["audio"])
-
-
-def decimate_ch0(raw_chw: np.ndarray, downsampler: AudioDownsampler) -> np.ndarray:
+def pytorch_mel_1ch(raw_chw: np.ndarray, mel_pp: MelPreprocessor) -> np.ndarray:
     x = torch.from_numpy(raw_chw[0:1].astype(np.float32)).unsqueeze(0)
-    out = downsampler.downsample({"shake": {"audio": x}})["shake"]["audio"]
-    return out.squeeze(0).numpy()
-
-
-def pytorch_mel_1ch(raw_chw: np.ndarray, mel_pp: MelPreprocessor, downsampler: AudioDownsampler) -> np.ndarray:
-    decimated = decimate_ch0(raw_chw, downsampler)
-    x = torch.from_numpy(decimated.astype(np.float32)).unsqueeze(0)
     out = mel_pp.preprocess({"shake": {"audio": x}})
     return out["shake"]["audio"].squeeze(0).numpy()
 
 
-def pytorch_mel_3ch(raw_chw: np.ndarray, mel_pp: MelPreprocessor, downsampler: AudioDownsampler) -> np.ndarray:
-    x = torch.from_numpy(raw_chw.astype(np.float32)).unsqueeze(0)
-    decimated = downsampler.downsample({"shake": {"audio": x}})["shake"]["audio"].squeeze(0)
+def pytorch_mel_3ch(raw_chw: np.ndarray, mel_pp: MelPreprocessor) -> np.ndarray:
     parts = []
     for c in range(3):
-        ch = decimated[c : c + 1].unsqueeze(0)
-        out = mel_pp.preprocess({"shake": {"audio": ch}})
+        x = torch.from_numpy(raw_chw[c : c + 1].astype(np.float32)).unsqueeze(0)
+        out = mel_pp.preprocess({"shake": {"audio": x}})
         parts.append(out["shake"]["audio"])
     mel = torch.cat(parts, dim=1).squeeze(0)
     return mel.numpy()
@@ -270,7 +256,6 @@ def main() -> None:
     model_lib = compile_model_so()
 
     mel_pp = make_mel_preprocessor()
-    downsampler = make_downsampler()
 
     bb1 = build_backbone(model_cfg, num_classes, in_channels=1)
     load_backbone_1ch(bb1, CKPT, channel_index=0)
@@ -300,8 +285,8 @@ def main() -> None:
         raw = np.fromfile(bin_path, dtype=np.float32).reshape(RAW_SHAPE)
 
         mel_c = c_mel_from_raw(raw, mel_lib)
-        mel_pt_1 = pytorch_mel_1ch(raw, mel_pp, downsampler)
-        mel_pt_3 = pytorch_mel_3ch(raw, mel_pp, downsampler)
+        mel_pt_1 = pytorch_mel_1ch(raw, mel_pp)
+        mel_pt_3 = pytorch_mel_3ch(raw, mel_pp)
 
         mel_c_vs_pt = float(np.max(np.abs(mel_c - mel_pt_1)))
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export ACIDS packaged C samples as (3, 7, 256) float32 @ 16 kHz (pre-decimation)."""
+"""Export ACIDS packaged C samples as (3, 7, 25) float32 @ 1600 Hz (post-decimation)."""
 
 import sys
 from pathlib import Path
@@ -13,12 +13,12 @@ REPO = PKG.parent.parent if (PKG.parent.parent / "src2").is_dir() else PKG.paren
 SRC2 = REPO / "src2"
 sys.path.insert(0, str(SRC2))
 
+from data_augmenter.audio_downsample import AudioDownsampler
 from dataset_utils.multimodal_core import normalize_sample_data_layout
 
-PKG = Path(__file__).resolve().parent
 NUM_CHANNELS = 3
 NUM_SEGMENTS = 7
-SAMPLES_PER_SEGMENT = 256
+SAMPLES_PER_SEGMENT = 25
 
 SAMPLE_NAMES = [
     "Gv3c1090_96",
@@ -73,6 +73,15 @@ def load_audio_chw_16k(pt_path: str) -> np.ndarray:
     return chw.astype(np.float32)
 
 
+def decimate_chw(chw_16k: np.ndarray, downsampler: AudioDownsampler) -> np.ndarray:
+    x = torch.from_numpy(chw_16k).unsqueeze(0)
+    out = downsampler.downsample({"shake": {"audio": x}})["shake"]["audio"]
+    decimated = out.squeeze(0).numpy()
+    if decimated.shape != (NUM_CHANNELS, NUM_SEGMENTS, SAMPLES_PER_SEGMENT):
+        raise ValueError(f"unexpected decimated shape {decimated.shape}")
+    return decimated.astype(np.float32)
+
+
 def write_sample_txt(path: Path, sample_name: str, label_id: int, audio_chw: np.ndarray) -> None:
     flat = audio_chw.reshape(-1)
     with open(path, "w", encoding="utf-8") as handle:
@@ -95,12 +104,14 @@ def main() -> None:
     bin_dir = PKG / "samples"
     txt_dir.mkdir(parents=True, exist_ok=True)
     bin_dir.mkdir(parents=True, exist_ok=True)
+    downsampler = AudioDownsampler(16000, 1600, target_modalities=["audio"])
 
     for sample_name, label_id in zip(SAMPLE_NAMES, LABEL_IDS):
         pt_path = find_pt_path(sample_name, index_paths)
         chw_16k = load_audio_chw_16k(pt_path)
-        write_sample_txt(txt_dir / f"{sample_name}.txt", sample_name, label_id, chw_16k)
-        write_sample_bin(bin_dir / f"{sample_name}.bin", chw_16k)
+        chw_1600 = decimate_chw(chw_16k, downsampler)
+        write_sample_txt(txt_dir / f"{sample_name}.txt", sample_name, label_id, chw_1600)
+        write_sample_bin(bin_dir / f"{sample_name}.bin", chw_1600)
         print(f"wrote {sample_name} from {pt_path}")
 
 
