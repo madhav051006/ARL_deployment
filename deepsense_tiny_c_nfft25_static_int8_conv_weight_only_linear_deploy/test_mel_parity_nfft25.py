@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Parity test: C acids_mel_preprocess vs PyTorch MelPreprocessor (n_fft=25)."""
+"""Parity test: C decimate + mel vs PyTorch AudioDownsampler + MelPreprocessor (n_fft=25)."""
 
 import ctypes
 import subprocess
@@ -10,13 +10,16 @@ import numpy as np
 import torch
 
 PKG = Path(__file__).resolve().parent
-SRC2 = PKG.parent / "src2"
+REPO = PKG.parent.parent if (PKG.parent.parent / "src2").is_dir() else PKG.parent
+SRC2 = REPO / "src2"
 sys.path.insert(0, str(SRC2))
 
+from data_augmenter.audio_downsample import AudioDownsampler
 from data_augmenter.mel_preprocess import MelPreprocessor
 
+NUM_CHANNELS = 3
 NUM_SEGMENTS = 7
-SAMPLES_PER_SEGMENT = 25
+RAW_SAMPLES_PER_SEGMENT = 256
 MEL_BINS = 80
 OUTPUT_SIZE = NUM_SEGMENTS * MEL_BINS
 TOLERANCE = 1e-4
@@ -39,16 +42,18 @@ def compile_shared_lib() -> Path:
     return lib_path
 
 
-def pytorch_mel(chw_25: np.ndarray) -> np.ndarray:
-    x = torch.from_numpy(chw_25.astype(np.float32)).unsqueeze(0)
+def pytorch_mel(chw_16k: np.ndarray) -> np.ndarray:
+    downsampler = AudioDownsampler(16000, 1600, target_modalities=["audio"])
     mel_pp = MelPreprocessor(
         n_fft=25, n_mel=80, fmin=20.0, fmax=800.0, sample_rate=1600, device="cpu"
     )
-    out = mel_pp.preprocess({"shake": {"audio": x}})
+    x = torch.from_numpy(chw_16k[0:1].astype(np.float32)).unsqueeze(0)
+    decimated = downsampler.downsample({"shake": {"audio": x}})["shake"]["audio"]
+    out = mel_pp.preprocess({"shake": {"audio": decimated}})
     return out["shake"]["audio"].squeeze(0).numpy()
 
 
-def c_mel(chw_25: np.ndarray, lib_path: Path) -> np.ndarray:
+def c_mel(chw_16k: np.ndarray, lib_path: Path) -> np.ndarray:
     lib = ctypes.CDLL(str(lib_path))
     lib.acids_audio_preprocess_ch0_segments_chw.argtypes = [
         ctypes.POINTER(ctypes.c_float),
@@ -56,7 +61,7 @@ def c_mel(chw_25: np.ndarray, lib_path: Path) -> np.ndarray:
     ]
     lib.acids_audio_preprocess_ch0_segments_chw.restype = ctypes.c_int
 
-    flat_in = np.ascontiguousarray(chw_25.astype(np.float32).reshape(-1))
+    flat_in = np.ascontiguousarray(chw_16k.astype(np.float32).reshape(-1))
     out_arr = np.zeros(OUTPUT_SIZE, dtype=np.float32)
     rc = lib.acids_audio_preprocess_ch0_segments_chw(
         flat_in.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
@@ -70,8 +75,8 @@ def c_mel(chw_25: np.ndarray, lib_path: Path) -> np.ndarray:
 def main() -> None:
     lib_path = compile_shared_lib()
     rng = np.random.default_rng(42)
-    chw = rng.standard_normal((3, NUM_SEGMENTS, SAMPLES_PER_SEGMENT)).astype(np.float32)
-    ref = pytorch_mel(chw[0:1])
+    chw = rng.standard_normal((NUM_CHANNELS, NUM_SEGMENTS, RAW_SAMPLES_PER_SEGMENT)).astype(np.float32)
+    ref = pytorch_mel(chw)
     got = c_mel(chw, lib_path)
     diff = float(np.max(np.abs(ref - got)))
     if diff >= TOLERANCE:

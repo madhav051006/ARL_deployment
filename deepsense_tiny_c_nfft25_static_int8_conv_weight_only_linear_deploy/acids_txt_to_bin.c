@@ -18,7 +18,7 @@ static int parse_shape_line(const char *line, int *c, int *seg, int *t)
         return -1;
     }
     if (*c != ACIDS_RAW_AUDIO_CHANNELS || *seg != ACIDS_NUM_SEGMENTS || *t != ACIDS_RAW_SEG_SAMPLES) {
-        fprintf(stderr, "expected shape 3,7,25, got %s\n", line);
+        fprintf(stderr, "expected shape 3,7,256, got %s\n", line);
         return -1;
     }
     return 0;

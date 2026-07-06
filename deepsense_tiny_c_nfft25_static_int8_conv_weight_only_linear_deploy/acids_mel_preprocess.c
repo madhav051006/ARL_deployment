@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stddef.h>
 
+#include "acids_fir_taps.h"
 #include "acids_mel_tables.h"
 #include "acids_rfft_tables.h"
 
@@ -67,8 +68,6 @@ int acids_mel_preprocess_chw(const float *input_1600, float *out_chw)
     return 0;
 }
 
-#if 0
-/* Legacy 16 kHz -> 1600 Hz decimator (no longer used; input is already @ 1600 Hz). */
 static float acids_conv1d_same_at(const float *segment, int trimmed_len, int out_idx)
 {
     float acc = 0.0f;
@@ -84,14 +83,13 @@ static float acids_conv1d_same_at(const float *segment, int trimmed_len, int out
 static void acids_decimate_segment_256(const float *segment, float *out_decimated)
 {
     const int trimmed_len =
-        ACIDS_LEGACY_RAW_SEG_SAMPLES - (ACIDS_LEGACY_RAW_SEG_SAMPLES % ACIDS_DECIMATE_FACTOR);
+        ACIDS_RAW_SEG_SAMPLES - (ACIDS_RAW_SEG_SAMPLES % ACIDS_DECIMATE_FACTOR);
 
     for (int i = 0; i < ACIDS_DECIMATED_SEG_SAMPLES; ++i) {
         const int filtered_idx = i * ACIDS_DECIMATE_FACTOR;
         out_decimated[i] = acids_conv1d_same_at(segment, trimmed_len, filtered_idx);
     }
 }
-#endif
 
 int acids_audio_preprocess_ch0_segments_chw(const float *input_chw, float *out_chw)
 {
@@ -100,9 +98,11 @@ int acids_audio_preprocess_ch0_segments_chw(const float *input_chw, float *out_c
     }
 
     for (int seg = 0; seg < ACIDS_NUM_SEGMENTS; ++seg) {
+        float decimated[ACIDS_DECIMATED_SEG_SAMPLES];
         const float *raw_segment = input_chw + seg * ACIDS_RAW_SEG_SAMPLES;
         float *mel_row = out_chw + seg * ACIDS_MEL_BINS;
-        acids_segment_mel_len(raw_segment, ACIDS_RAW_SEG_SAMPLES, mel_row);
+        acids_decimate_segment_256(raw_segment, decimated);
+        acids_segment_mel_len(decimated, ACIDS_DECIMATED_SEG_SAMPLES, mel_row);
     }
 
     return 0;

@@ -27,7 +27,8 @@ import torch.nn as nn
 import yaml
 
 PKG = Path(__file__).resolve().parent
-SRC2 = PKG.parent / "src2"
+REPO = PKG.parent.parent if (PKG.parent.parent / "src2").is_dir() else PKG.parent
+SRC2 = REPO / "src2"
 DEFAULT_TINY_NN = Path.home() / "Tiny-NN-in-C"
 DEFAULT_OUTPUT = PKG
 
