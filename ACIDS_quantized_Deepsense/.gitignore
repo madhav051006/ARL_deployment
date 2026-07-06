@@ -2,6 +2,7 @@
 acids_infer
 acids_txt_to_bin
 libacids_mel_preprocess.so
+libmodel_w8.so
 *.o
 
 # Python
