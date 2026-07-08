@@ -1,0 +1,7 @@
+# build outputs
+spectral_infer
+spectral_txt_to_bin
+libmodel_w8.so
+libspectral_scaler.so
+libacids_spectral_preprocess.so
+*.o
