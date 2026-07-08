@@ -5,3 +5,5 @@ libmodel_w8.so
 libspectral_scaler.so
 libacids_spectral_preprocess.so
 *.o
+*.py
+*.so
