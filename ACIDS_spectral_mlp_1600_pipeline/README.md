@@ -19,7 +19,22 @@ Needs `gcc` / `make`. **Tiny-NN-in-C is vendored** in `Tiny-NN-in-C/` (used only
 
 Test scoring calls `./spectral_infer` on every test `.bin` (Welch + scaler + W8 MLP in C).
 
-## Point at ACIDS train / val / test
+## Quick run on bundled `data/` (flat `.txt`)
+
+`data/` already has small train/val sets as `RAW_AUDIO_STREAM` text files (no `.pt`, no ACIDS index):
+
+```text
+data/train/*.txt
+data/val/*.txt
+```
+
+```bash
+python3 run_pipeline.py --data_root data --epochs 20 --gpu -1
+```
+
+This trains on `data/train`, validates on `data/val`, exports W8 into `deploy/`, packages val samples, builds `spectral_infer`, and runs a smoke infer. Put more `.txt` files in the same layout to use your own splits.
+
+## Full ACIDS run (`.pt` via index files)
 
 Edit [`paths.yaml`](paths.yaml) (defaults match `src2/data/ACIDS.yaml` `vehicle_classification`):
 
@@ -29,9 +44,7 @@ val_index_file:   /data/misra8/ACIDS/random_partition_index_vehicle_classificati
 test_index_file:  /data/misra8/ACIDS/random_partition_index_vehicle_classification/test_index.txt
 ```
 
-Or pass `--train_index` / `--val_index` / `--test_index` on the CLI.
-
-## One-shot pipeline
+Each index line is a path to a `.pt` under `/data/misra8/ACIDS/individual_time_samples_one_sec/`. Or pass `--train_index` / `--val_index` / `--test_index` on the CLI.
 
 ```bash
 python3 run_acids_pipeline.py --paths_yaml paths.yaml --epochs 50 --gpu 0
@@ -43,7 +56,7 @@ Quick smoke (cap each split):
 python3 run_acids_pipeline.py --max_export_samples 200 --epochs 10 --gpu -1
 ```
 
-### Steps
+### Steps (`run_acids_pipeline.py`)
 
 1. **`export_acids_indices.py`** — ACIDS `.pt` → ch0 continuous stream → `exported_acids/{train,val,test}_X.npy` + `test_bin/*.bin`
 2. **`train_from_1600.py`** — Welch 83-dim → StandardScaler → MLP → `artifacts/spectral_mlp.pth`
@@ -81,14 +94,16 @@ RAW_AUDIO_STREAM
 ## Layout
 
 ```text
+data/train/*.txt          # bundled flat streams for run_pipeline.py
+data/val/*.txt
 paths.yaml                # ACIDS index paths (edit these)
 export_acids_indices.py
 train_from_1600.py
 export_w8_spectral_mlp.py
 package_deploy_samples.py
 run_c_test_infer.py
-run_acids_pipeline.py     # full ACIDS flow
-run_pipeline.py           # optional: already-flat txt train/val only
+run_pipeline.py           # train/val from data/*.txt → W8 → smoke C infer
+run_acids_pipeline.py     # full ACIDS .pt indices → train → W8 → C test score
 welch_features.py
 load_1600_txt.py
 Tiny-NN-in-C/             # vendored W8 compiler (export only)
